@@ -31,6 +31,8 @@ class CreateActsAsDagTables < ActiveRecord::Migration
 end
 ```
 
+If you have a multi-database setup, make sure to create the tables in the same database where your DAG ActiveRecord models are located.
+
 ### Usage
 
 ```ruby

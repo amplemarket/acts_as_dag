@@ -15,23 +15,37 @@ module ActsAsDAG
 
       # Create Link and Descendant Classes
       class_eval <<-RUBY
-        class ::#{options[:link_class]} < ActsAsDAG::AbstractLink
-          self.table_name = '#{options[:link_table]}'
-          belongs_to :parent, :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links, :optional => true
-          belongs_to :child, :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links, :optional => true
+        parent_class = ancestors.detect {it.respond_to?(:abstract_class) && it.abstract_class } || ActiveRecord::Base
 
-          after_save Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
-          after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
+        unless Object.const_defined?(options[:link_class])
+          class ::#{options[:link_class]} < parent_class
+            self.table_name = '#{options[:link_table]}'
+            belongs_to :parent, :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links, :optional => true
+            belongs_to :child, :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links, :optional => true
 
-          def node_class; #{self.name} end
+            after_save Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
+            after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
+
+            validate :not_self_referential
+
+            def not_self_referential
+              errors.add(:base, "Self referential links #{self.class} cannot be created.") if parent_id && parent_id == child_id
+            end
+
+            def node_class; #{self.name} end
+          end
         end
 
-        class ::#{options[:descendant_class]} < ActsAsDAG::AbstractDescendant
-          self.table_name = '#{options[:descendant_table]}'
-          belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => :ancestor_id, :optional => true
-          belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id, :optional => true
+        unless Object.const_defined?(options[:descendant_class])
+          class ::#{options[:descendant_class]} < parent_class
+            self.table_name = '#{options[:descendant_table]}'
+            belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => :ancestor_id, :optional => true
+            belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id, :optional => true
 
-          def node_class; #{self.name} end
+            validates_presence_of :ancestor_id, :descendant_id
+
+            def node_class; #{self.name} end
+          end
         end
 
         def self.link_class
@@ -401,22 +415,5 @@ module ActsAsDAG
         rebuild_subtree_links(child, path.dup)
       end
     end
-  end
-
-  # CLASSES (for providing hooks)
-  class AbstractLink < ActiveRecord::Base
-    self.abstract_class = true
-
-    validate :not_self_referential
-
-    def not_self_referential
-      errors.add(:base, "Self referential links #{self.class} cannot be created.") if parent_id && parent_id == child_id
-    end
-  end
-
-  class AbstractDescendant < ActiveRecord::Base
-    self.abstract_class = true
-
-    validates_presence_of :ancestor_id, :descendant_id
   end
 end

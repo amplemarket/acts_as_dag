@@ -1027,4 +1027,12 @@ describe 'acts_as_dag' do
       expect(record.subtree_links.first.category_type).to eq(klass.name)
     end
   end
+
+  if ActiveRecord::VERSION::MAJOR >= 6
+    describe "models connected to non-primary DBs" do
+      let(:klass) { AnotherDBModel }
+
+      it_should_behave_like "DAG Model"
+    end
+  end
 end
